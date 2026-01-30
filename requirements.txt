@@ -1,0 +1,4 @@
+pyzk @ git+https://github.com/fananimi/pyzk@50637985b56c3312bf80346c022ebfa567e02808
+pandas==2.1.3
+openpyxl==3.1.2
+pyqt5==5.15.2
