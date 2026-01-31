@@ -31,11 +31,18 @@ from PyQt5.QtWidgets import (
     QDateTimeEdit,
     QCheckBox,
     QGraphicsDropShadowEffect,
-    QProgressBar
+    QProgressBar,
+    QComboBox,
+    QTabWidget,
+    QHeaderView,
+    QTableWidget,
+    QTableWidgetItem,
+    QLineEdit
 )
 from modules.data_converter import DataConverter
 from modules.zk_interaction_utils import ZKDeviceController
 from modules.settings_windows import SettingsWindow
+from modules.database import DatabaseManager
 import json
 import os
 
@@ -77,6 +84,7 @@ class ZKGInterface(QWidget):
         super().__init__()
         self.setObjectName("MainWindow")
         self.device_controller = None
+        self.db_manager = DatabaseManager()
         self.load_styles()
         self.init_ui()
         self.closeEvent = self.on_close
@@ -120,6 +128,19 @@ class ZKGInterface(QWidget):
 
         main_layout.addWidget(header_frame)
 
+        # --- Tab Widget ---
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane { border: none; }
+            QTabBar::tab { background: rgba(0,0,0,0.2); color: white; padding: 10px; min-width: 100px; }
+            QTabBar::tab:selected { background: rgba(0, 243, 255, 0.2); border-bottom: 2px solid #00f3ff; }
+        """)
+        
+        # --- DASHBOARD TAB ---
+        self.dashboard_tab = QWidget()
+        dashboard_layout = QVBoxLayout(self.dashboard_tab)
+        dashboard_layout.setSpacing(20)
+
         # --- Status Section ---
         status_frame = QFrame()
         status_frame.setObjectName("StatusFrame")
@@ -128,19 +149,40 @@ class ZKGInterface(QWidget):
         self.status_label_title = QLabel("Device Status:")
         self.status_label = QLabel("Disconnected")
         self.status_label.setObjectName("StatusLabel")
-        self.status_label.setStyleSheet("color: #ff3333;") # Red for disconnected
+        self.status_label.setStyleSheet("color: #ff3333;")
 
         status_layout.addWidget(self.status_label_title)
         status_layout.addWidget(self.status_label)
         status_layout.addStretch()
         
-        main_layout.addWidget(status_frame)
+        dashboard_layout.addWidget(status_frame)
 
         # --- Controls Section ---
         controls_frame = QFrame()
         controls_frame.setObjectName("ControlsFrame")
         controls_layout = QVBoxLayout(controls_frame)
         controls_layout.setSpacing(15)
+
+        # Device Selector
+        self.device_combo = QComboBox()
+        self.device_combo.setStyleSheet("""
+            QComboBox {
+                background-color: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 5px;
+                color: white;
+                padding: 5px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #1a1a2e;
+                color: white;
+                selection-background-color: #bc13fe;
+            }
+        """)
+        self.refresh_device_combo()
+        self.device_combo.currentIndexChanged.connect(self.on_device_selection_change)
+        controls_layout.addWidget(QLabel("Select Device:"))
+        controls_layout.addWidget(self.device_combo)
 
         # Connect Button
         self.btn_connect = QPushButton("CONNECT DEVICE")
@@ -166,7 +208,7 @@ class ZKGInterface(QWidget):
         self.btn_export_users.clicked.connect(self.export_users_data)
         controls_layout.addWidget(self.btn_export_users)
         
-        main_layout.addWidget(controls_frame)
+        dashboard_layout.addWidget(controls_frame)
 
         # --- Filter & Export Section ---
         filter_frame = QFrame()
@@ -212,7 +254,100 @@ class ZKGInterface(QWidget):
         self.btn_export_attendance.clicked.connect(self.export_attendance_data)
         filter_layout.addWidget(self.btn_export_attendance)
 
-        main_layout.addWidget(filter_frame)
+        dashboard_layout.addWidget(filter_frame)
+        dashboard_layout.addStretch()
+
+        self.tabs.addTab(self.dashboard_tab, "Dashboard")
+        
+        # --- REPORTS TAB ---
+        self.reports_tab = QWidget()
+        reports_layout = QVBoxLayout(self.reports_tab)
+        reports_layout.setContentsMargins(10, 10, 10, 10)
+        
+        # Reports Filters
+        rep_filter_frame = QFrame()
+        rep_filter_frame.setObjectName("FilterFrame") # Recycle style
+        rep_filter_layout = QGridLayout(rep_filter_frame)
+        
+        self.rep_search_name = QLineEdit()
+        self.rep_search_name.setPlaceholderText("Search by Name...")
+        self.rep_search_name.setStyleSheet("background: rgba(0,0,0,0.3); color: white; border: 1px solid rgba(255,255,255,0.1); padding: 5px; border-radius: 5px;")
+        
+        self.rep_date_from = QDateTimeEdit(QDateTime.currentDateTime().addDays(-7))
+        self.rep_date_from.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self.rep_date_from.setCalendarPopup(True)
+        
+        self.rep_date_to = QDateTimeEdit(QDateTime.currentDateTime())
+        self.rep_date_to.setDisplayFormat("yyyy-MM-dd HH:mm")
+        self.rep_date_to.setCalendarPopup(True)
+        
+        btn_refresh_preview = QPushButton("Load & Preview Data")
+        btn_refresh_preview.clicked.connect(self.load_preview_data)
+        btn_refresh_preview.setStyleSheet("background-color: #00f3ff; color: #121212; border-radius: 5px; padding: 5px;")
+        
+        rep_filter_layout.addWidget(QLabel("Name:"), 0, 0)
+        rep_filter_layout.addWidget(self.rep_search_name, 0, 1)
+        rep_filter_layout.addWidget(btn_refresh_preview, 0, 2)
+        
+        rep_filter_layout.addWidget(QLabel("From:"), 1, 0)
+        rep_filter_layout.addWidget(self.rep_date_from, 1, 1)
+        rep_filter_layout.addWidget(QLabel("To:"), 1, 2)
+        rep_filter_layout.addWidget(self.rep_date_to, 1, 3)
+        
+        reports_layout.addWidget(rep_filter_frame)
+        
+        # Data Table
+        self.data_table = QTableWidget()
+        self.data_table.setColumnCount(5)
+        self.data_table.setHorizontalHeaderLabels(["User ID", "Name", "Time", "Type", "Status"])
+        header = self.data_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+        self.data_table.setStyleSheet("QTableWidget { background: rgba(0,0,0,0.2); color: white; gridline-color: #333; } QHeaderView::section { background: #1a1a2e; color: #00f3ff; }")
+        reports_layout.addWidget(self.data_table)
+        
+        # Export from Report
+        self.btn_export_report = QPushButton("Export Current View")
+        self.btn_export_report.clicked.connect(self.export_report_data)
+        self.btn_export_report.setStyleSheet("background: #bc13fe; color: white; padding: 8px; border-radius: 5px;")
+        reports_layout.addWidget(self.btn_export_report)
+        
+        # History Section
+        reports_layout.addWidget(QLabel("Export History (Offline Archive)"))
+        self.history_table = QTableWidget()
+        self.history_table.setColumnCount(5) # Added ID column (hidden)
+        self.history_table.setHorizontalHeaderLabels(["ID", "Time", "Device", "Records", "File"])
+        self.history_table.setColumnHidden(0, True) # Hide ID
+        self.history_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.history_table.setStyleSheet("alternate-background-color: rgba(255,255,255,0.05); background: rgba(0,0,0,0.2); color: #ccc; selection-background-color: #bc13fe;")
+        self.history_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.history_table.setSelectionMode(QTableWidget.SingleSelection)
+        self.history_table.setFixedHeight(120)
+        reports_layout.addWidget(self.history_table)
+        
+        # History Actions
+        hist_action_layout = QHBoxLayout()
+        
+        btn_refresh_hist = QPushButton("Refresh List")
+        btn_refresh_hist.clicked.connect(self.load_history_data)
+        
+        btn_load_session = QPushButton("Load Selected Session")
+        btn_load_session.clicked.connect(self.load_history_session)
+        btn_load_session.setStyleSheet("background-color: #00f3ff; color: #121212;")
+        
+        btn_del_session = QPushButton("Delete Selected Session")
+        btn_del_session.clicked.connect(self.delete_history_session)
+        btn_del_session.setStyleSheet("background-color: #ff3333; color: white;")
+        
+        hist_action_layout.addWidget(btn_refresh_hist)
+        hist_action_layout.addWidget(btn_load_session)
+        hist_action_layout.addWidget(btn_del_session)
+        
+        reports_layout.addLayout(hist_action_layout)
+
+        self.tabs.addTab(self.reports_tab, "Reports")
+        self.load_history_data() # Init history
+
+        main_layout.addWidget(self.tabs)
         
         # --- Loading Bar ---
         self.progress_bar = QProgressBar()
@@ -286,12 +421,25 @@ class ZKGInterface(QWidget):
             if self.device_controller:
                 self.disconnect_from_device()
 
-            self.status_bar.showMessage("Connecting...")
+            # Get Active Device
+            devices = settings.get("devices", [])
+            active_index = settings.get("last_active_index", 0)
+            
+            if not devices:
+                 raise ValueError("No devices configured. Please go to Settings.")
+            
+            if active_index >= len(devices):
+                active_index = 0
+            
+            device_config = devices[active_index]
+
+            self.status_bar.showMessage(f"Connecting to {device_config.get('name', 'Device')}...")
+            
             self.device_controller = ZKDeviceController(
-                ip_address=settings["device_settings"]["ip_address"],
-                port=settings["device_settings"]["port"],
-                timeout=settings["device_settings"]["timeout"],
-                password=settings["device_settings"]["password"],
+                ip_address=device_config["ip"],
+                port=device_config["port"],
+                timeout=device_config["timeout"],
+                password=device_config["password"],
             )
             self.device_controller.create_zk_instance()
             self.device_controller.connect_to_device()
@@ -411,12 +559,177 @@ class ZKGInterface(QWidget):
         msg.setWindowTitle("Error")
         msg.exec_()
         
+    def refresh_device_combo(self):
+        self.device_combo.blockSignals(True)
+        self.device_combo.clear()
+        settings = read_settings()
+        devices = settings.get("devices", [])
+        
+        for dev in devices:
+            self.device_combo.addItem(f"{dev.get('name', 'Unknown')} ({dev.get('ip')})")
+            
+        active_index = settings.get("last_active_active_index", 0)
+        # Fix key typo migration if needed
+        if "last_active_index" in settings:
+             active_index = settings["last_active_index"]
+
+        if active_index < self.device_combo.count():
+            self.device_combo.setCurrentIndex(active_index)
+            
+        self.device_combo.blockSignals(False)
+
+    def on_device_selection_change(self, index):
+        # Update settings with new active index
+        settings = read_settings()
+        settings["last_active_index"] = index
+        with open('settings.json', 'w') as file:
+            json.dump(settings, file)
+            
+        # Disconnect if switching
+        if self.device_controller:
+            self.disconnect_from_device()
+
+    # --- Reports Logic ---
+    def load_preview_data(self):
+        if not self.device_controller or not self.device_controller.connection:
+            self.show_error_dialog("Please connect to a device first.")
+            return
+
+        try:
+            start_date = self.rep_date_from.dateTime().toPyDateTime()
+            end_date = self.rep_date_to.dateTime().toPyDateTime()
+            name_filter = self.rep_search_name.text().lower()
+            
+            self.status_bar.showMessage("Loading data...")
+            data = self.device_controller.retrieve_attendance_with_user_names(start_date, end_date)
+            
+            # Filter by Name Client-Side
+            filtered_data = []
+            for record in data:
+                if not name_filter or name_filter in record["Name"].lower():
+                    filtered_data.append(record)
+            
+            # Populate Table
+            self.data_table.setRowCount(len(filtered_data))
+            for i, row in enumerate(filtered_data):
+                self.data_table.setItem(i, 0, QTableWidgetItem(str(row["User ID"])))
+                self.data_table.setItem(i, 1, QTableWidgetItem(str(row["Name"])))
+                self.data_table.setItem(i, 2, QTableWidgetItem(str(row["Time"])))
+                self.data_table.setItem(i, 3, QTableWidgetItem(str(row["Type"])))
+                self.data_table.setItem(i, 4, QTableWidgetItem(str(row["Status"])))
+                
+            self.current_report_data = filtered_data
+            self.status_bar.showMessage(f"Loaded {len(filtered_data)} records.")
+            
+        except Exception as e:
+            self.show_error_dialog(str(e))
+
+    def export_report_data(self):
+        if not hasattr(self, 'current_report_data') or not self.current_report_data:
+            self.show_error_dialog("No data to export. Please load data first.")
+            return
+            
+        try:
+            converter = DataConverter(file_format='excel')
+            file_path = converter.convert_att_to_file(self.current_report_data)
+            
+            # Log to DB
+            device_name = "Unknown"
+            if self.device_combo.count() > 0:
+                device_name = self.device_combo.currentText()
+            
+            # 1. Log Export
+            export_id = self.db_manager.log_export(
+                device_name=device_name,
+                record_count=len(self.current_report_data),
+                file_path=file_path,
+                start_date=self.rep_date_from.dateTime().toString(),
+                end_date=self.rep_date_to.dateTime().toString()
+            )
+            
+            # 2. Save Deep Records
+            self.db_manager.save_export_records(export_id, self.current_report_data)
+            
+            self.load_history_data() # Refresh history table
+            QMessageBox.information(self, "Success", f"Exported {len(self.current_report_data)} records to {file_path}")
+            
+        except Exception as e:
+            self.show_error_dialog(f"Export failed: {e}")
+
+    def load_history_data(self):
+        try:
+            history = self.db_manager.get_export_history()
+            self.history_table.setRowCount(len(history))
+            # Rows: (0:id, 1:device, 2:count, 3:start, 4:end, 5:path, 6:time)
+            
+            for i, row in enumerate(history):
+                self.history_table.setItem(i, 0, QTableWidgetItem(str(row[0]))) # ID (Hidden)
+                self.history_table.setItem(i, 1, QTableWidgetItem(str(row[6]))) # Timestamp
+                self.history_table.setItem(i, 2, QTableWidgetItem(str(row[1]))) # Device
+                self.history_table.setItem(i, 3, QTableWidgetItem(str(row[2]))) # Count
+                self.history_table.setItem(i, 4, QTableWidgetItem(str(row[5]))) # File Path
+        except Exception as e:
+            print(f"Error loading history: {e}")
+
+    def load_history_session(self):
+        row = self.history_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Selection", "Please select a session from the history list.")
+            return
+
+        try:
+            export_id = int(self.history_table.item(row, 0).text())
+            records = self.db_manager.get_export_records(export_id)
+            
+            if not records:
+                QMessageBox.information(self, "Info", "No detailed records found for this session (it might be an old export).")
+                return
+
+            # Populate Main Table
+            self.data_table.setRowCount(len(records))
+            for i, row_data in enumerate(records):
+                self.data_table.setItem(i, 0, QTableWidgetItem(str(row_data["User ID"])))
+                self.data_table.setItem(i, 1, QTableWidgetItem(str(row_data["Name"])))
+                self.data_table.setItem(i, 2, QTableWidgetItem(str(row_data["Time"])))
+                self.data_table.setItem(i, 3, QTableWidgetItem(str(row_data["Type"])))
+                self.data_table.setItem(i, 4, QTableWidgetItem(str(row_data["Status"])))
+            
+            # Set as current data for re-export
+            self.current_report_data = records
+            self.status_bar.showMessage(f"Loaded session with {len(records)} records.")
+            
+        except Exception as e:
+            self.show_error_dialog(f"Error loading session: {e}")
+
+    def delete_history_session(self):
+        row = self.history_table.currentRow()
+        if row < 0:
+            QMessageBox.warning(self, "Selection", "Please select a session to delete.")
+            return
+            
+        confirm = QMessageBox.question(
+            self, "Confirm Delete", 
+            "Are you sure you want to delete this session and all its records?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        
+        if confirm == QMessageBox.Yes:
+            try:
+                export_id = int(self.history_table.item(row, 0).text())
+                self.db_manager.delete_export(export_id)
+                self.load_history_data() # Refresh list
+                self.status_bar.showMessage("Session deleted.")
+            except Exception as e:
+                self.show_error_dialog(f"Delete failed: {e}")
+
     def open_settings(self):
         try:
             with open('settings.json', 'r') as file:
                 settings = json.load(file)
             settings_window = SettingsWindow(settings)
             settings_window.exec_()
+            # Refresh combo after closing settings
+            self.refresh_device_combo()
         except Exception as e:
             self.show_error_dialog(f"Could not load settings: {e}")
         
