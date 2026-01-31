@@ -1,0 +1,95 @@
+/* Main Window Background */
+QWidget#MainWindow {
+    background-color: #1a1a2e; /* Dark Blue-Purple Background */
+    /* Optional: If you had an image, you'd use background-image here */
+}
+
+/* Glassmorphism Classes for Containers */
+.QFrame {
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+QLabel {
+    color: #e0e0e0;
+    font-family: 'Segoe UI', sans-serif;
+    font-size: 14px;
+}
+
+QLabel#TitleLabel {
+    color: #ffffff;
+    font-size: 28px;
+    font-weight: bold;
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.5); /* Neon Glow */
+}
+
+QLabel#StatusLabel {
+    font-weight: bold;
+    font-size: 16px;
+}
+
+/* Neon Buttons */
+QPushButton {
+    background-color: rgba(0, 0, 0, 0.3);
+    border: 2px solid #00f3ff; /* Neon Cyan */
+    border-radius: 15px;
+    color: #00f3ff;
+    font-size: 14px;
+    font-weight: bold;
+    padding: 10px 20px;
+}
+
+QPushButton:hover {
+    background-color: rgba(0, 243, 255, 0.1);
+    box-shadow: 0 0 15px #00f3ff;
+}
+
+QPushButton:pressed {
+    background-color: rgba(0, 243, 255, 0.2);
+    border-color: #ffffff;
+    color: #ffffff;
+}
+
+QPushButton:disabled {
+    border-color: #555555;
+    color: #555555;
+    background-color: transparent;
+}
+
+/* Specific Accent Button (Connect) */
+QPushButton#BtnConnect {
+    border-color: #bc13fe; /* Neon Purple */
+    color: #bc13fe;
+}
+QPushButton#BtnConnect:hover {
+    background-color: rgba(188, 19, 254, 0.1);
+}
+
+/* Date Edit Styling */
+QDateTimeEdit {
+    background-color: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    color: #ffffff;
+    padding: 5px;
+    font-size: 14px;
+}
+
+QDateTimeEdit::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 20px;
+    border-left-width: 0px;
+}
+
+/* Status Bar */
+QStatusBar {
+    color: #888888;
+    background: transparent;
+}
+
+QMessageBox {
+    background-color: #16213e;
+    color: #ffffff;
+}

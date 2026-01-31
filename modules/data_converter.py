@@ -12,15 +12,28 @@ class DataConverter:
     def convert_att_to_file(self, att_data):
         file_name = f"attendance_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}"
         aslist = []
-        
+
+        is_dict = len(att_data) > 0 and isinstance(att_data[0], dict)
 
         for record in att_data:
-            aslist.append([record.user_id, record.timestamp, record.punch])
+            if is_dict:
+                aslist.append([
+                    record.get("User ID"),
+                    record.get("Name"),
+                    record.get("Time"),
+                    record.get("Type"),
+                    record.get("Status")
+                ])
+                columns = ["User ID", "Name", "Time", "Type", "Status"]
+            else:
+                aslist.append([record.user_id, record.timestamp, record.punch])
+                columns = ["id", "timestamp", "punch"]
+                
         if self.export_path:
             file_name = os.path.join(self.export_path, file_name)
         if self.file_format == 'excel':
             file_name += ".xlsx" 
-            self._convert_to_excel(aslist, ["id", "timestamp", "punch"],file_name)
+            self._convert_to_excel(aslist, columns, file_name)
         # Add support for other formats here
         else:
             raise ValueError(f"Unsupported file format: {self.file_format}")

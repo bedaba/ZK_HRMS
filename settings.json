@@ -1,1 +1,1 @@
-{"device_settings": {"ip_address": "192.168.1.222", "port": 4370, "timeout": 10, "password": "0"}, "file_format": "excel", "export_path": "/home/generic/Desktop/"}
+{"device_settings": {"ip_address": "10.0.0.222", "port": 4370, "timeout": 10, "password": ""}, "file_format": "excel", "export_path": "C:\\Users\\bedab\\OneDrive\\Desktop\\ZK_HRMS"}

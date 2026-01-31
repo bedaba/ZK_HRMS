@@ -65,12 +65,20 @@ class ZKDeviceController:
             logging.error(error_msg)
             raise ValueError(error_msg)
 
-    def retrieve_attendance_data(self):
+    def retrieve_attendance_data(self, start_date=None, end_date=None):
         try:
             if self.connection:
                 attendances = self.connection.get_attendance()
                 if len(attendances) == 0:
                     logging.warning("No attendance data found")
+                
+                if start_date and end_date:
+                    filtered_attendances = []
+                    for att in attendances:
+                        if start_date <= att.timestamp <= end_date:
+                            filtered_attendances.append(att)
+                    return filtered_attendances
+                
                 return attendances
             else:
                 raise ValueError("Invalid Connection")
@@ -90,6 +98,45 @@ class ZKDeviceController:
                 raise ValueError("Invalid Connection")
         except Exception as e:
             error_msg = f"Error retrieving users data: {e}"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+
+    def retrieve_attendance_with_user_names(self, start_date=None, end_date=None):
+        try:
+            # 1. Get Users Map
+            users = self.retrieve_users_data()
+            user_map = {u.user_id: u.name for u in users}
+            
+            # 2. Get Attendance
+            attendance = self.retrieve_attendance_data(start_date, end_date)
+            
+            # 3. Merge
+            merged_data = []
+            
+            punch_type_map = {
+                0: "Check-In",
+                1: "Check-Out",
+                2: "Break-Out",
+                3: "Break-In",
+                4: "Overtime-In",
+                5: "Overtime-Out"
+            }
+            
+            for att in attendance:
+                name = user_map.get(att.user_id, "Unknown")
+                punch_str = punch_type_map.get(att.punch, str(att.punch))
+                
+                merged_data.append({
+                    "User ID": att.user_id,
+                    "Name": name,
+                    "Time": att.timestamp,
+                    "Type": punch_str,
+                    "Status": att.status
+                })
+            return merged_data
+            
+        except Exception as e:
+            error_msg = f"Error retrieving merged data: {e}"
             logging.error(error_msg)
             raise ValueError(error_msg)
 
